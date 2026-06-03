@@ -14,15 +14,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Get latest version from GitLab
+      - name: Get latest version from Codeberg
         id: version
         run: |
-          RAW=$(curl -s "https://gitlab.com/api/v4/projects/librewolf-community%2Fbrowser%2Fbsys6/releases?per_page=1" \
+          RAW=$(curl -s "https://codeberg.org/api/v1/repos/librewolf/bsys6/releases?limit=1" \
             | python3 -c "import sys,json; print(json.load(sys.stdin)[0]['tag_name'].lstrip('v'))")
           VERSION=$(python3 -c "print('$RAW'.replace('-', ',', 1))")
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "version_dash=$RAW" >> $GITHUB_OUTPUT
-
+    
       - name: Check if already up to date
         id: check
         run: |
