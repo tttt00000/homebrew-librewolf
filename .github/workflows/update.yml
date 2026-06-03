@@ -1,0 +1,70 @@
+name: Update LibreWolf Cask
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+jobs:
+  update:
+    runs-on: macos-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get latest version from GitLab
+        id: version
+        run: |
+          RAW=$(curl -s "https://gitlab.com/api/v4/projects/librewolf-community%2Fbrowser%2Fbsys6/releases/permalink/latest" \
+            | python3 -c "import sys,json; print(json.load(sys.stdin)['tag_name'].lstrip('v'))")
+          # RAW is like 151.0.3-1 (dash), cask needs 151.0.3,1 (comma)
+          VERSION=$(python3 -c "print('$RAW'.replace('-', ',', 1))")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "version_dash=$RAW" >> $GITHUB_OUTPUT
+
+      - name: Check if already up to date
+        id: check
+        run: |
+          CURRENT=$(python3 -c "
+          import re
+          content = open('Casks/librewolf.rb').read()
+          m = re.search(r'version \"(.+?)\"', content)
+          print(m.group(1) if m else '')
+          ")
+          NEW="${{ steps.version.outputs.version }}"
+          if [ "$CURRENT" = "$NEW" ]; then
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Compute SHA256 of ARM64 DMG
+        if: steps.check.outputs.skip == 'false'
+        id: hash
+        run: |
+          V="${{ steps.version.outputs.version_dash }}"
+          URL="https://codeberg.org/api/packages/librewolf/generic/librewolf/${V}/librewolf-${V}-macos-arm64-package.dmg"
+          SHA=$(curl -sL "$URL" | shasum -a 256 | awk '{print $1}')
+          echo "sha=$SHA" >> $GITHUB_OUTPUT
+
+      - name: Update cask file
+        if: steps.check.outputs.skip == 'false'
+        run: |
+          python3 -c "
+          import re
+          content = open('Casks/librewolf.rb').read()
+          content = re.sub(r'version \".*?\"', 'version \"${{ steps.version.outputs.version }}\"', content)
+          content = re.sub(r'sha256 \".*?\"', 'sha256 \"${{ steps.hash.outputs.sha }}\"', content)
+          open('Casks/librewolf.rb', 'w').write(content)
+          "
+
+      - name: Commit and push
+        if: steps.check.outputs.skip == 'false'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Casks/librewolf.rb
+          git commit -m "Update LibreWolf to ${{ steps.version.outputs.version }}"
+          git push
