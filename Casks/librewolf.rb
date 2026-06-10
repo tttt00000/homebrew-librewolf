@@ -25,12 +25,11 @@ cask "librewolf" do
     EOS
   end
 
-postflight do
-  system_command "/usr/bin/xattr",
-                 args: ["-d", "com.apple.quarantine", "#{appdir}/LibreWolf.app"],
-                 sudo: false
-end
-
+  postflight do
+    system_command "/usr/bin/xattr",
+                   args: ["-dr", "com.apple.quarantine", "#{appdir}/LibreWolf.app"],
+                   sudo: false
+  end
 
   zap trash: [
     "~/.librewolf",
