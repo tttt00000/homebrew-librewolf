@@ -22,7 +22,7 @@ jobs:
           VERSION=$(python3 -c "print('$RAW'.replace('-', ',', 1))")
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "version_dash=$RAW" >> $GITHUB_OUTPUT
-    
+
       - name: Check if already up to date
         id: check
         run: |
@@ -41,28 +41,40 @@ jobs:
 
       - name: Compute SHA256 of ARM64 DMG
         if: steps.check.outputs.skip == 'false'
-        id: hash
+        id: hash_arm
         run: |
           V="${{ steps.version.outputs.version_dash }}"
           URL="https://codeberg.org/api/packages/librewolf/generic/librewolf/${V}/librewolf-${V}-macos-arm64-package.dmg"
           SHA=$(curl -sL "$URL" | shasum -a 256 | awk '{print $1}')
           echo "sha=$SHA" >> $GITHUB_OUTPUT
 
+      - name: Compute SHA256 of Intel DMG
+        if: steps.check.outputs.skip == 'false'
+        id: hash_intel
+        run: |
+          V="${{ steps.version.outputs.version_dash }}"
+          URL="https://codeberg.org/api/packages/librewolf/generic/librewolf/${V}/librewolf-${V}-macos-x86_64-package.dmg"
+          SHA=$(curl -sL "$URL" | shasum -a 256 | awk '{print $1}')
+          echo "sha=$SHA" >> $GITHUB_OUTPUT
+
       - name: Update cask file
         if: steps.check.outputs.skip == 'false'
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          SHA="${{ steps.hash.outputs.sha }}"
           python3 -c "
           import re, os
           content = open('Casks/librewolf.rb').read()
           content = re.sub(r'version \".*?\"', 'version \"' + os.environ['VERSION'] + '\"', content)
-          content = re.sub(r'sha256 \".*?\"', 'sha256 \"' + os.environ['SHA'] + '\"', content)
+          content = re.sub(
+            r'sha256 arm:.*?intel:.*?\".*?\"',
+            'sha256 arm:   \"' + os.environ['SHA_ARM'] + '\",\n         intel: \"' + os.environ['SHA_INTEL'] + '\"',
+            content, flags=re.DOTALL
+          )
           open('Casks/librewolf.rb', 'w').write(content)
-          " 
+          "
         env:
           VERSION: ${{ steps.version.outputs.version }}
-          SHA: ${{ steps.hash.outputs.sha }}
+          SHA_ARM: ${{ steps.hash_arm.outputs.sha }}
+          SHA_INTEL: ${{ steps.hash_intel.outputs.sha }}
 
       - name: Commit and push
         if: steps.check.outputs.skip == 'false'
